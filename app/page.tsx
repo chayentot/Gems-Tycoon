@@ -545,10 +545,12 @@ export default function GemsTycoon3Page() {
 
   return (
     <main className="shell tycoon3-shell">
-      <header className="topbar tycoon3-topbar">
-        <div className="brand">💎 GEMS TYCOON</div>
-        <nav className="row" aria-label="Main navigation"><span aria-current="page">MAP 3</span></nav>
-      </header>
+      <section className="tycoon3-header-section" aria-label="Game header">
+        <header className="topbar tycoon3-topbar">
+          <div className="brand">💎 GEMS TYCOON</div>
+          <nav className="row" aria-label="Main navigation"><span aria-current="page">MAP 3</span></nav>
+        </header>
+      </section>
 
       <div className="tycoon3-map-space">
         <section className="tycoon3-map-section" aria-label="3rd Map grid">
@@ -775,19 +777,30 @@ export default function GemsTycoon3Page() {
           min-height: 0;
           display: flex;
           flex-direction: column;
-          padding: 124px 0 100px;
+          padding: 12px 0 100px;
           overflow: hidden;
         }
+        .tycoon3-header-section {
+          flex: 0 0 auto;
+          width: 100%;
+          margin-bottom: 14px;
+          padding: 8px;
+          border: 1px solid #334155;
+          border-radius: 18px;
+          background: linear-gradient(145deg, #142238, #0d1524);
+          box-shadow: 0 10px 28px #0005;
+        }
         .tycoon3-topbar {
-          position: fixed;
-          top: 12px;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 100;
+          position: relative;
+          inset: auto;
+          transform: none;
+          z-index: 2;
           box-sizing: border-box;
-          width: min(1180px, calc(100% - 40px));
+          width: 100%;
           margin: 0;
           padding: 13px 16px 13px 20px;
+          border: 1px solid #ffffff12;
+          background: #0d1524c9;
         }
         .tycoon3-topbar nav.row { gap: 5px; }
         .tycoon3-topbar nav.row a { padding: 10px 13px; }
@@ -1087,10 +1100,10 @@ export default function GemsTycoon3Page() {
           .tycoon3-wallet-cards div { flex-direction: row; align-items: center; }
           .tycoon3-shell {
             width: calc(100% - 20px);
-            padding-top: 194px;
+            padding-top: 12px;
             padding-bottom: 96px;
           }
-          .tycoon3-topbar { top: 8px; width: calc(100% - 20px); }
+          .tycoon3-topbar { width: 100%; }
           .tycoon3-grid { --tycoon3-cell-size: calc((100dvh - 292px) / 24); }
           .tycoon-map-footer {
             bottom: 8px;
@@ -1101,8 +1114,8 @@ export default function GemsTycoon3Page() {
           .tycoon-map-tab { min-height: 42px; font-size: 12px; }
         }
         @media (max-width: 420px) {
-          .tycoon3-shell { width: calc(100% - 16px); padding-top: 190px; }
-          .tycoon3-topbar, .tycoon-map-footer { width: calc(100% - 16px); }
+          .tycoon3-shell { width: calc(100% - 16px); padding-top: 12px; }
+          .tycoon-map-footer { width: calc(100% - 16px); }
           .tycoon3-grid { --tycoon3-cell-size: calc((100dvh - 288px) / 24); }
         }
       `}</style>
