@@ -277,6 +277,9 @@ function getStructureAt(column: number, row: number) {
 export default function GemsTycoon3Page() {
   const mapDragRef = useRef<{ startX: number; scrollLeft: number; moved: boolean } | null>(null);
   const [isFactoryRunning, setIsFactoryRunning] = useState(false);
+  const [factoryLevels, setFactoryLevels] = useState<Record<string, number>>({});
+  const [selectedFactory, setSelectedFactory] = useState<string | null>(null);
+  const [upgradeConfirmOpen, setUpgradeConfirmOpen] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
   const [transferDirection, setTransferDirection] = useState<"deposit" | "withdraw">("deposit");
   const [transferAmount, setTransferAmount] = useState("1");
@@ -373,8 +376,42 @@ export default function GemsTycoon3Page() {
     );
   }, [starCrystals]);
 
+  const FACTORY_UPGRADE_COSTS = [0, 60, 180, 540, 1620, 4860, 14580, 43740, 131220, 393660];
+  const FACTORY_STATS = [
+    { xp: 1, input: 2, output: 1 }, { xp: 5, input: 4, output: 2 },
+    { xp: 15, input: 6, output: 4 }, { xp: 21, input: 8, output: 8 },
+    { xp: 28, input: 10, output: 16 }, { xp: 35, input: 12, output: 32 },
+    { xp: 42, input: 14, output: 64 }, { xp: 49, input: 16, output: 128 },
+    { xp: 56, input: 18, output: 256 }, { xp: 63, input: 20, output: 512 },
+  ];
+  const FACTORY1_DURATIONS = [60, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700];
+  const currentFactoryLevel = selectedFactory ? (factoryLevels[selectedFactory] ?? 1) : 1;
+  const selectedStats = FACTORY_STATS[currentFactoryLevel - 1];
+  const selectedUpgradeCost = FACTORY_UPGRADE_COSTS[currentFactoryLevel] ?? 0;
+  const getUpgradeBanks = (factoryName: string): BankKey[] => {
+    if (factoryName === "FACTORY 1") return ["bank1"];
+    const number = Number(factoryName.match(/^FACTORY (\d+)$/)?.[1]);
+    if (number >= 2 && number <= 5) return ["bank1"];
+    if (number >= 6 && number <= 9) return ["bank2"];
+    const recipe = getAdvancedRecipe(factoryName);
+    return recipe ? Object.keys(recipe.requirements) as BankKey[] : [];
+  };
+  const confirmFactoryUpgrade = () => {
+    if (!selectedFactory || currentFactoryLevel >= 10) return;
+    const banks = getUpgradeBanks(selectedFactory);
+    if (!banks.length || !banks.every((bank) => game[bank] >= selectedUpgradeCost)) return;
+    setGame((current) => {
+      if (!banks.every((bank) => current[bank] >= selectedUpgradeCost)) return current;
+      const next = { ...current };
+      for (const bank of banks) next[bank] -= selectedUpgradeCost;
+      return next;
+    });
+    setFactoryLevels((current) => ({ ...current, [selectedFactory]: currentFactoryLevel + 1 }));
+    setUpgradeConfirmOpen(false);
+  };
   const startFactory = () => {
-    if (remainingSeconds === 0) setRemainingSeconds(60);
+    const duration = FACTORY1_DURATIONS[(factoryLevels["FACTORY 1"] ?? 1) - 1];
+    if (!isFactoryRunning) setRemainingSeconds(duration);
     setIsFactoryRunning(true);
   };
 
@@ -558,7 +595,7 @@ export default function GemsTycoon3Page() {
           className="tycoon3-map-section"
           aria-label="3rd Map grid"
           onMouseDown={(event) => {
-            if (event.button !== 0 || (event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+            if (event.button !== 0 || (event.target as HTMLElement).closest("button, a, input, select, textarea, [data-factory]")) return;
             mapDragRef.current = {
               startX: event.clientX,
               scrollLeft: event.currentTarget.scrollLeft,
@@ -614,6 +651,12 @@ export default function GemsTycoon3Page() {
                   key={index}
                   style={{ gridColumn: column, gridRow: row }}
                   aria-label={`Column ${column}, Row ${row}${structure ? `, ${structure.name}` : isConveyor ? ", conveyor moving right" : ""}`}
+                  data-factory={isStructureCenter && structure?.name.startsWith("FACTORY ") ? structure.name : undefined}
+                  role={isStructureCenter && structure?.name.startsWith("FACTORY ") ? "button" : undefined}
+                  tabIndex={isStructureCenter && structure?.name.startsWith("FACTORY ") ? 0 : undefined}
+                  onClick={isStructureCenter && structure?.name.startsWith("FACTORY ") ? () => setSelectedFactory(structure.name) : undefined}
+                  onKeyDown={isStructureCenter && structure?.name.startsWith("FACTORY ") ? (event) => { if (event.key === "Enter" || event.key === " ") setSelectedFactory(structure.name); } : undefined}
+                  title={isStructureCenter && structure?.name.startsWith("FACTORY ") ? `Open ${structure.name} upgrades` : undefined}
                 >
                   {isStructureCenter && (
                     <span className="tycoon3-structure-label">
@@ -759,6 +802,32 @@ export default function GemsTycoon3Page() {
         </section>
       </div>
 
+      {selectedFactory && (
+        <div className="tycoon3-trade-backdrop" role="presentation" onClick={() => { setSelectedFactory(null); setUpgradeConfirmOpen(false); }}>
+          <section className="tycoon3-factory-panel" role="dialog" aria-modal="true" aria-labelledby="tycoon3-factory-title" onClick={(event) => event.stopPropagation()}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <h2 id="tycoon3-factory-title">{selectedFactory}</h2>
+              <button type="button" className="secondary" onClick={() => { setSelectedFactory(null); setUpgradeConfirmOpen(false); }}>Close</button>
+            </div>
+            <div className="tycoon3-factory-level">LEVEL {currentFactoryLevel} / 10</div>
+            <div className="tycoon3-factory-stats">
+              <div><small>XP</small><strong>{selectedStats.xp}/sec</strong></div>
+              <div><small>Input</small><strong>{selectedStats.input}</strong></div>
+              <div><small>Output</small><strong>{selectedStats.output}/sec</strong></div>
+              {selectedFactory === "FACTORY 1" && <div><small>Duration</small><strong>{FACTORY1_DURATIONS[currentFactoryLevel - 1] / 60} min</strong></div>}
+            </div>
+            {currentFactoryLevel < 10 ? <>
+              <p className="small">Upgrade cost: <strong>{selectedUpgradeCost.toLocaleString()}</strong> material from each input bank.</p>
+              <div className="tycoon3-upgrade-banks">
+                {getUpgradeBanks(selectedFactory).map((bank) => <div key={bank}><span>{bank.toUpperCase()}</span><strong>{game[bank].toLocaleString()} available</strong><small>{selectedUpgradeCost.toLocaleString()} required</small></div>)}
+              </div>
+              <button type="button" disabled={!getUpgradeBanks(selectedFactory).every((bank) => game[bank] >= selectedUpgradeCost)} onClick={() => setUpgradeConfirmOpen(true)}>UPGRADE TO LEVEL {currentFactoryLevel + 1}</button>
+              {upgradeConfirmOpen && <div className="tycoon3-upgrade-confirm"><p>Confirm upgrade to Level {currentFactoryLevel + 1}? Required materials will be deducted from the input bank{getUpgradeBanks(selectedFactory).length > 1 ? "s" : ""}.</p><div className="row"><button type="button" onClick={confirmFactoryUpgrade}>Confirm Upgrade</button><button type="button" className="secondary" onClick={() => setUpgradeConfirmOpen(false)}>Cancel</button></div></div>}
+            </> : <p className="small">Maximum level reached.</p>}
+          </section>
+        </div>
+      )}
+
       {tradeOpen && (
         <div className="tycoon3-trade-backdrop" role="presentation" onClick={() => setTradeOpen(false)}>
           <section className="tycoon3-trade-panel" role="dialog" aria-modal="true" aria-labelledby="tycoon3-trade-title" onClick={(event) => event.stopPropagation()}>
@@ -795,6 +864,22 @@ export default function GemsTycoon3Page() {
       </footer>
 
       <style jsx>{`
+        .tycoon3-factory-panel { width: min(520px,100%); max-height: min(88dvh,760px); overflow-y: auto; padding: clamp(14px,2.5vw,24px); border: 1px solid #64748b; border-radius: 16px; background: #111c2e; color: #f8fafc; box-shadow: 0 20px 60px #000a; }
+        .tycoon3-factory-panel h2 { font-size: 22px; }
+        .tycoon3-factory-panel .row { flex-wrap: wrap; }
+        .tycoon3-factory-panel button { min-height: 40px; padding: 9px 12px; border: 0; border-radius: 8px; background: #facc15; color: #172554; font-weight: 800; cursor: pointer; }
+        .tycoon3-factory-panel button.secondary { background: #334155; color: #fff; }
+        .tycoon3-factory-panel button:disabled { opacity: .45; cursor: not-allowed; }
+        .tycoon3-factory-level { margin: 14px 0; color: #fde68a; font-weight: 900; }
+        .tycoon3-factory-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+        .tycoon3-factory-stats div,.tycoon3-upgrade-banks div { display: flex; flex-direction: column; gap: 5px; padding: 12px; border: 1px solid #475569; border-radius: 9px; background: #1e293b; }
+        .tycoon3-factory-stats small,.tycoon3-upgrade-banks small { color: #94a3b8; }
+        .tycoon3-factory-stats strong { color: #fde68a; font-size: 18px; }
+        .tycoon3-upgrade-banks { display: grid; gap: 7px; margin: 12px 0; }
+        .tycoon3-upgrade-banks div { display: grid; grid-template-columns: 1fr auto; }
+        .tycoon3-upgrade-banks small { grid-column: 1 / -1; }
+        .tycoon3-upgrade-confirm { margin-top: 14px; padding: 12px; border: 1px solid #facc15; border-radius: 9px; background: #172554; }
+        .tycoon3-factory-panel .small { color: #cbd5e1; }
         .tycoon3-trade-backdrop { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: #020617cc; }\n        .tycoon3-trade-panel { width: min(760px,100%); max-height: min(88dvh,820px); overflow-y: auto; padding: clamp(12px,2.5vw,24px); border: 1px solid #64748b; border-radius: 16px; background: #111c2e; color: #f8fafc; box-shadow: 0 20px 60px #000a; }
         .tycoon3-trade-panel h2 { font-size: clamp(18px,3vw,24px); }
         .tycoon3-trade-panel h3 { margin: 18px 0 6px; }
