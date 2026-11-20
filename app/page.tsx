@@ -275,6 +275,8 @@ function getStructureAt(column: number, row: number) {
 }
 
 export default function GemsTycoon3Page() {
+  const mapSectionRef = useRef<HTMLElement | null>(null);
+  const mapDragRef = useRef<{ startX: number; scrollLeft: number; moved: boolean } | null>(null);
   const [isFactoryRunning, setIsFactoryRunning] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
   const [transferDirection, setTransferDirection] = useState<"deposit" | "withdraw">("deposit");
@@ -553,7 +555,41 @@ export default function GemsTycoon3Page() {
       </section>
 
       <div className="tycoon3-map-space">
-        <section className="tycoon3-map-section" aria-label="3rd Map grid">
+        <section
+          ref={mapSectionRef}
+          className="tycoon3-map-section"
+          aria-label="3rd Map grid"
+          onMouseDown={(event) => {
+            if (event.button !== 0 || (event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+            mapDragRef.current = {
+              startX: event.clientX,
+              scrollLeft: event.currentTarget.scrollLeft,
+              moved: false,
+            };
+            event.currentTarget.classList.add("tycoon3-map-dragging");
+          }}
+          onMouseMove={(event) => {
+            const drag = mapDragRef.current;
+            if (!drag) return;
+            const distance = event.clientX - drag.startX;
+            if (Math.abs(distance) > 3) drag.moved = true;
+            event.currentTarget.scrollLeft = drag.scrollLeft - distance;
+          }}
+          onMouseUp={(event) => {
+            if (mapDragRef.current?.moved) {
+              event.preventDefault();
+              window.setTimeout(() => { mapDragRef.current = null; }, 0);
+            } else {
+              mapDragRef.current = null;
+            }
+            event.currentTarget.classList.remove("tycoon3-map-dragging");
+          }}
+          onMouseLeave={(event) => {
+            mapDragRef.current = null;
+            event.currentTarget.classList.remove("tycoon3-map-dragging");
+          }}
+          onDragStart={(event) => event.preventDefault()}
+        >
           <div className="tycoon3-grid">
             {Array.from({ length: TOTAL_COLUMNS * MAP_ROWS }, (_, index) => {
               const column = Math.floor(index / MAP_ROWS) + 1;
@@ -817,12 +853,16 @@ export default function GemsTycoon3Page() {
           flex: 1 1 auto;
           overflow-x: auto;
           overflow-y: hidden;
+          cursor: grab;
+          user-select: none;
           border: 1px solid #334155;
           border-radius: 14px;
           background: rgba(17, 28, 46, 0.45);
           scrollbar-color: #64748b #111c2e;
           scrollbar-width: thin;
         }
+        .tycoon3-map-section.tycoon3-map-dragging { cursor: grabbing; }
+        .tycoon3-map-section.tycoon3-map-dragging * { cursor: grabbing !important; }
         .tycoon3-grid {
           --tycoon3-cell-size: calc((100dvh - 226px) / 24);
           display: grid;
