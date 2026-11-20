@@ -275,7 +275,6 @@ function getStructureAt(column: number, row: number) {
 }
 
 export default function GemsTycoon3Page() {
-  const mapSectionRef = useRef<HTMLElement | null>(null);
   const mapDragRef = useRef<{ startX: number; scrollLeft: number; moved: boolean } | null>(null);
   const [isFactoryRunning, setIsFactoryRunning] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
@@ -556,7 +555,6 @@ export default function GemsTycoon3Page() {
 
       <div className="tycoon3-map-space">
         <section
-          ref={mapSectionRef}
           className="tycoon3-map-section"
           aria-label="3rd Map grid"
           onMouseDown={(event) => {
