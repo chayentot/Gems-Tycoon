@@ -713,8 +713,9 @@ export default function GemsTycoon3Page() {
               const run = game.runs[factory.name];
               const recipe = getAdvancedRecipe(factory.name);
               const canStart = canStartAdvancedFactory(factory.name);
+              const levelInput = FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input;
               const required = recipe
-                ? Object.entries(recipe.requirements).map(([bank, amount]) => `${(amount ?? 0) * (recipe.duration / recipe.interval)} ${BANK_DISPLAY[Object.keys(BANK_DISPLAY).find((name) => BANK_DISPLAY[name].key === bank) ?? "BANK"].label}`).join(" + ")
+                ? Object.keys(recipe.requirements).map((bank) => `${levelInput} ${BANK_DISPLAY[Object.keys(BANK_DISPLAY).find((name) => BANK_DISPLAY[name].key === bank) ?? "BANK"].label}`).join(" + ")
                 : "required resources";
               return (
                 <button
@@ -725,7 +726,7 @@ export default function GemsTycoon3Page() {
                   onClick={() => startAdvancedFactory(factory.name)}
                   disabled={!canStart}
                   aria-disabled={!canStart}
-                  aria-label={run?.active ? `${factory.name}, ${run.remaining} seconds remaining` : canStart ? `Start ${factory.name} for ${recipe?.duration} seconds` : `${factory.name} locked: insufficient resources`}
+                  aria-label={run?.active ? `${factory.name}, ${run.remaining} seconds remaining` : canStart ? `Start ${factory.name} for 60 seconds` : `${factory.name} locked: requires ${required} in the input banks`}
                   title={run?.active ? `${run.remaining}s remaining` : canStart ? `Start ${factory.name}` : `Requires ${required} in the input banks`}
                 >
                   {run?.active ? `${run.remaining}s` : canStart ? "PLAY" : `NEED ${FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input}`}
