@@ -112,12 +112,13 @@ const GEMSTONE_LOGOS = [
 type MapPoint = { column: number; row: number };
 type MovingMaterial = {
   id: number;
+  amount?: number;
   kind: "star-input" | "nebulite" | "nebulite-input" | "sol" | "advanced-input" | "meteorite" | "eternyx" | "lunarium" | "voidstone" | "prismora" | "divinestone" | "genesis";
   step: number;
   path: MapPoint[];
   targetBank?: BankKey;
 };
-type FactoryRun = { remaining: number; active: boolean; elapsed?: number };
+type FactoryRun = { remaining: number; active: boolean; elapsed?: number; inputPerSecond?: number; outputPerSecond?: number };
 type TycoonGameState = {
   bank1: number;
   bank2: number;
@@ -378,11 +379,11 @@ export default function GemsTycoon3Page() {
 
   const FACTORY_UPGRADE_COSTS = [0, 60, 180, 540, 1620, 4860, 14580, 43740, 131220, 393660];
   const FACTORY_STATS = [
-    { xp: 1, input: 2, output: 1 }, { xp: 5, input: 4, output: 2 },
-    { xp: 15, input: 6, output: 4 }, { xp: 21, input: 8, output: 8 },
-    { xp: 28, input: 10, output: 16 }, { xp: 35, input: 12, output: 32 },
-    { xp: 42, input: 14, output: 64 }, { xp: 49, input: 16, output: 128 },
-    { xp: 56, input: 18, output: 256 }, { xp: 63, input: 20, output: 512 },
+    { xp: 1, input: 120, output: 1 }, { xp: 5, input: 240, output: 2 },
+    { xp: 15, input: 360, output: 4 }, { xp: 21, input: 480, output: 8 },
+    { xp: 28, input: 600, output: 16 }, { xp: 35, input: 720, output: 32 },
+    { xp: 42, input: 840, output: 64 }, { xp: 49, input: 960, output: 128 },
+    { xp: 56, input: 1080, output: 256 }, { xp: 63, input: 1200, output: 512 },
   ];
   const FACTORY1_DURATIONS = [60, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700];
   const currentFactoryLevel = selectedFactory ? (factoryLevels[selectedFactory] ?? 1) : 1;
@@ -418,25 +419,25 @@ export default function GemsTycoon3Page() {
   const canStartAdvancedFactory = (factoryName: string, state: TycoonGameState = game) => {
     const recipe = getAdvancedRecipe(factoryName);
     if (!recipe || state.runs[factoryName]?.active) return false;
-    const outputsPerRun = recipe.duration / recipe.interval;
-    return Object.entries(recipe.requirements).every(([bank, perOutput]) =>
-      state[bank as BankKey] >= (perOutput ?? 0) * outputsPerRun
-    );
+    const level = factoryLevels[factoryName] ?? 1;
+    const stats = FACTORY_STATS[level - 1];
+    return Object.keys(recipe.requirements).every((bank) => state[bank as BankKey] >= stats.input);
   };
 
   const startAdvancedFactory = (factoryName: string) => {
     setGame((current) => {
       const recipe = getAdvancedRecipe(factoryName);
       if (!recipe || !canStartAdvancedFactory(factoryName, current)) return current;
-      const outputsPerRun = recipe.duration / recipe.interval;
+      const level = factoryLevels[factoryName] ?? 1;
+      const stats = FACTORY_STATS[level - 1];
       const updatedBanks = { ...current };
-      for (const [bank, perOutput] of Object.entries(recipe.requirements)) {
+      for (const bank of Object.keys(recipe.requirements)) {
         const key = bank as BankKey;
-        updatedBanks[key] = current[key] - (perOutput ?? 0) * outputsPerRun;
+        updatedBanks[key] = current[key] - stats.input;
       }
       return {
         ...updatedBanks,
-        runs: { ...current.runs, [factoryName]: { remaining: recipe.duration, elapsed: 0, active: true } },
+        runs: { ...current.runs, [factoryName]: { remaining: 60, elapsed: 0, active: true, inputPerSecond: stats.input / 60, outputPerSecond: stats.output } },
       };
     });
   };
@@ -444,22 +445,24 @@ export default function GemsTycoon3Page() {
   const canStartProcessingFactory = (factoryName: string, state: TycoonGameState = game) => {
     const factory = PROCESSING_FACTORIES.find((item) => item.name === factoryName);
     if (!factory || state.runs[factoryName]?.active) return false;
+    const level = factoryLevels[factoryName] ?? 1;
+    const requiredInput = FACTORY_STATS[level - 1].input;
     const availableResources = factory.centerColumn === 38 ? state.bank1 : state.bank2;
-    return availableResources >= 120;
+    return availableResources >= requiredInput;
   };
 
   const startProcessingFactory = (factoryName: string) => {
-    // Reserve all 120 required materials at start so concurrent factories
-    // cannot spend the same bank balance.
     setGame((current) => {
       if (!canStartProcessingFactory(factoryName, current)) return current;
       const factory = PROCESSING_FACTORIES.find((item) => item.name === factoryName);
       if (!factory) return current;
       const bankKey = factory.centerColumn === 38 ? "bank1" : "bank2";
+      const stats = FACTORY_STATS[(factoryLevels[factoryName] ?? 1) - 1];
+      if (current[bankKey] < stats.input) return current;
       return {
         ...current,
-        [bankKey]: current[bankKey] - 120,
-        runs: { ...current.runs, [factoryName]: { remaining: 60, active: true } },
+        [bankKey]: current[bankKey] - stats.input,
+        runs: { ...current.runs, [factoryName]: { remaining: 60, active: true, inputPerSecond: stats.input / 60, outputPerSecond: stats.output } },
       };
     });
   };
@@ -480,20 +483,10 @@ export default function GemsTycoon3Page() {
           const outputPath = outputPathForFactory(factory.name);
           const inputKind = isNebuliteFactory ? "star-input" : "nebulite-input";
           const outputKind = isNebuliteFactory ? "nebulite" : "sol";
-          for (let index = 0; index < 2; index++) {
-            next.materials.push({
-              id: ++next.nextMaterialId,
-              kind: inputKind,
-              step: 0,
-              path: inputPath,
-            });
-          }
-          next.materials.push({
-            id: ++next.nextMaterialId,
-            kind: outputKind,
-            step: -inputPath.length,
-            path: outputPath,
-          });
+          const inputCount = Math.max(1, Math.ceil(run.inputPerSecond ?? 2));
+          const outputCount = Math.max(1, Math.floor(run.outputPerSecond ?? 1));
+          next.materials.push({ id: ++next.nextMaterialId, kind: inputKind, amount: inputCount, step: 0, path: inputPath });
+          next.materials.push({ id: ++next.nextMaterialId, kind: outputKind, amount: outputCount, step: -inputPath.length, path: outputPath });
           const remaining = Math.max(0, run.remaining - 1);
           next.runs[factory.name] = { remaining, active: remaining > 0 };
         }
@@ -513,28 +506,16 @@ export default function GemsTycoon3Page() {
           const recipe = getAdvancedRecipe(factory.name);
           if (!run?.active || !recipe) continue;
           const elapsed = (run.elapsed ?? 0) + 1;
-          const remaining = Math.max(0, recipe.duration - elapsed);
-          if (elapsed % recipe.interval === 0) {
-            const inputPath = inputPathForAdvancedFactory(factory.name);
-            const outputPath = outputPathForAdvancedFactory(factory.name);
-            const inputCount = Object.values(recipe.requirements).reduce((sum, amount) => sum + (amount ?? 0), 0);
-            for (let index = 0; index < inputCount; index++) {
-              next.materials.push({
-                id: ++next.nextMaterialId,
-                kind: "advanced-input",
-                step: 0,
-                path: inputPath,
-              });
-            }
-            next.materials.push({
-              id: ++next.nextMaterialId,
-              kind: recipe.outputKind,
-              step: -inputPath.length,
-              path: outputPath,
-              targetBank: recipe.outputBank,
-            });
+          const remaining = Math.max(0, 60 - elapsed);
+          const inputPath = inputPathForAdvancedFactory(factory.name);
+          const outputPath = outputPathForAdvancedFactory(factory.name);
+          const inputCount = Math.max(1, Math.ceil(run.inputPerSecond ?? 2));
+          const outputCount = Math.max(1, Math.floor(run.outputPerSecond ?? 1));
+          for (const bank of Object.keys(recipe.requirements)) {
+            next.materials.push({ id: ++next.nextMaterialId, kind: "advanced-input", amount: inputCount, step: 0, path: inputPath });
           }
-          next.runs[factory.name] = { remaining, elapsed, active: remaining > 0 };
+          next.materials.push({ id: ++next.nextMaterialId, kind: recipe.outputKind, amount: outputCount, step: -inputPath.length, path: outputPath, targetBank: recipe.outputBank });
+          next.runs[factory.name] = { ...run, remaining, elapsed, active: remaining > 0 };
         }
         return next;
       });
@@ -554,9 +535,9 @@ export default function GemsTycoon3Page() {
           .map((material) => ({ ...material, step: material.step + 1 }))
           .filter((material) => {
             if (material.step < material.path.length) return true;
-            if (material.kind === "nebulite") bank2Delivered++;
-            if (material.kind === "sol") bank3Delivered++;
-            if (material.targetBank) advancedDelivered[material.targetBank] = (advancedDelivered[material.targetBank] ?? 0) + 1;
+            if (material.kind === "nebulite") bank2Delivered += material.amount ?? 1;
+            if (material.kind === "sol") bank3Delivered += material.amount ?? 1;
+            if (material.targetBank) advancedDelivered[material.targetBank] = (advancedDelivered[material.targetBank] ?? 0) + (material.amount ?? 1);
             return false;
           });
         if (moving.length === current.materials.length && bank2Delivered === 0 && bank3Delivered === 0 && Object.keys(advancedDelivered).length === 0) {
@@ -721,10 +702,10 @@ export default function GemsTycoon3Page() {
                   onClick={() => startProcessingFactory(factory.name)}
                   disabled={!canStart}
                   aria-disabled={!canStart}
-                  aria-label={run?.active ? `${factory.name}, ${run.remaining} seconds remaining` : canStart ? `Start ${factory.name} for 60 seconds` : `${factory.name} locked: requires 120 resources in its input bank`}
-                  title={run?.active ? `${run.remaining}s remaining` : canStart ? `Start ${factory.name}` : `Requires 120 ${factory.centerColumn === 38 ? "Star Crystals in Bank 1" : "Nebulite Stones in Bank 2"}`}
+                  aria-label={run?.active ? `${factory.name}, ${run.remaining} seconds remaining` : canStart ? `Start ${factory.name} for 60 seconds` : `${factory.name} locked: requires ${FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input} resources in its input bank`}
+                  title={run?.active ? `${run.remaining}s remaining` : canStart ? `Start ${factory.name}` : `Requires ${FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input} ${factory.centerColumn === 38 ? "Star Crystals in Bank 1" : "Nebulite Stones in Bank 2"}`}
                 >
-                  {run?.active ? `${run.remaining}s` : canStart ? "PLAY" : "NEED 120"}
+                  {run?.active ? `${run.remaining}s` : canStart ? "PLAY" : `NEED ${FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input}`}
                 </button>
               );
             })}
@@ -747,7 +728,7 @@ export default function GemsTycoon3Page() {
                   aria-label={run?.active ? `${factory.name}, ${run.remaining} seconds remaining` : canStart ? `Start ${factory.name} for ${recipe?.duration} seconds` : `${factory.name} locked: insufficient resources`}
                   title={run?.active ? `${run.remaining}s remaining` : canStart ? `Start ${factory.name}` : `Requires ${required} in the input banks`}
                 >
-                  {run?.active ? `${run.remaining}s` : canStart ? "PLAY" : "NEED"}
+                  {run?.active ? `${run.remaining}s` : canStart ? "PLAY" : `NEED ${FACTORY_STATS[(factoryLevels[factory.name] ?? 1) - 1].input}`}
                 </button>
               );
             })}
@@ -812,7 +793,7 @@ export default function GemsTycoon3Page() {
             <div className="tycoon3-factory-level">LEVEL {currentFactoryLevel} / 10</div>
             <div className="tycoon3-factory-stats">
               <div><small>XP</small><strong>{selectedStats.xp}/sec</strong></div>
-              <div><small>Input</small><strong>{selectedStats.input}</strong></div>
+              <div><small>Input / 60s run</small><strong>{selectedStats.input.toLocaleString()}</strong></div>
               <div><small>Output</small><strong>{selectedStats.output}/sec</strong></div>
               {selectedFactory === "FACTORY 1" && <div><small>Duration</small><strong>{FACTORY1_DURATIONS[currentFactoryLevel - 1] / 60} min</strong></div>}
             </div>
